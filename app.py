@@ -1,15 +1,9 @@
 import os
-from flask import Flask, request, render_template, send_file
+import tkinter as tk
+from tkinter import filedialog, messagebox
 from PIL import Image
 import fitz  # PyMuPDF
 from reportlab.pdfgen import canvas
-
-app = Flask(__name__)
-
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
 def split_and_save_pdf(input_pdf, output_pdf, dpi=300):
@@ -21,9 +15,8 @@ def split_and_save_pdf(input_pdf, output_pdf, dpi=300):
     pix = first_page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-    # A0サイズ（841mm × 1189mm）を想定
     width, height = img.size
-    a4_width, a4_height = width // 4, height // 4  # A4サイズ相当のピクセル数
+    a4_width, a4_height = width // 4, height // 4
 
     temp_images = []
     c = canvas.Canvas(output_pdf)
@@ -52,35 +45,43 @@ def split_and_save_pdf(input_pdf, output_pdf, dpi=300):
 
     c.save()
 
-    # 作成したPNGファイルを削除
     for temp_img in temp_images:
         os.remove(temp_img)
 
     return output_pdf
 
 
-@app.route("/", methods=["GET", "POST"])
-def upload_file():
-    if request.method == "POST":
-        if "file" not in request.files:
-            return "ファイルが選択されていません", 400
+def select_pdf():
+    """ PDFを選択して処理を実行 """
+    file_path = filedialog.askopenfilename(filetypes=[("PDFファイル", "*.pdf")])
+    if not file_path:
+        return  # ファイルが選択されなかった場合は何もしない
 
-        file = request.files["file"]
-        if file.filename == "":
-            return "ファイルが選択されていません", 400
+    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+    output_pdf_path = os.path.join(desktop_path, "output_a4_16pages.pdf")
 
-        if file and file.filename.endswith(".pdf"):
-            input_pdf_path = os.path.join(UPLOAD_FOLDER, file.filename)
-            file.save(input_pdf_path)
-
-            output_pdf_path = os.path.join(OUTPUT_FOLDER,
-                                           "output_a4_16pages.pdf")
-            split_and_save_pdf(input_pdf_path, output_pdf_path)
-
-            return send_file(output_pdf_path, as_attachment=True)
-
-    return render_template("upload.html")
+    try:
+        split_and_save_pdf(file_path, output_pdf_path)
+        messagebox.showinfo("成功", f"分割PDFを保存しました:\n{output_pdf_path}")
+    except Exception as e:
+        messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{e}")
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# Tkinterのウィンドウを作成
+root = tk.Tk()
+root.title("A0ポスター分割ツール")
+root.geometry("400x200")
+
+label = tk.Label(root, text="PDFを選択してA4サイズに16分割", font=("Arial", 12))
+label.pack(pady=20)
+
+btn_select = tk.Button(root,
+                       text="PDFを選択",
+                       command=select_pdf,
+                       font=("Arial", 12))
+btn_select.pack(pady=10)
+
+btn_exit = tk.Button(root, text="終了", command=root.quit, font=("Arial", 12))
+btn_exit.pack(pady=10)
+
+root.mainloop()
